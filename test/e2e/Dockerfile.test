@@ -1,0 +1,33 @@
+# Dockerfile для E2E Test Runner
+# Запускает Dart тесты в изолированном контейнере
+
+FROM dart:3.3-sdk
+
+# Установка зависимостей
+RUN apt-get update && apt-get install -y \
+    curl \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Рабочая директория
+WORKDIR /app
+
+# Копируем pubspec для установки зависимостей
+COPY ../../../../pubspec.yaml /app/pubspec.yaml
+COPY ../../../../pubspec.lock /app/pubspec.lock
+
+# Копируем пакеты
+COPY ../../../../pkgs /app/pkgs
+
+# Установка зависимостей
+RUN dart pub get
+
+# Копируем тесты
+COPY . /app/test/e2e
+
+# Создаём директорию для результатов
+RUN mkdir -p /app/results
+
+# Точка входа - запуск тестов
+ENTRYPOINT ["dart", "test"]
+CMD ["test/e2e/e2e_tests.dart", "--reporter=expanded"]

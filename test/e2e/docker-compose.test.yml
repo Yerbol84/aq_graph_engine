@@ -1,0 +1,121 @@
+version: '3.8'
+
+# E2E тестовое окружение для Graph Engine
+# Полный стек: PostgreSQL + Data Service + Graph Engine + Test Runner
+# Имитирует production окружение
+
+services:
+  # PostgreSQL - база данных
+  postgres:
+    image: postgres:15-alpine
+    container_name: aq_test_postgres
+    environment:
+      POSTGRES_DB: aq_test
+      POSTGRES_USER: aq_test
+      POSTGRES_PASSWORD: aq_test_secret
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5433:5432"  # Используем другой порт чтобы не конфликтовать с локальным
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aq_test -d aq_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - test_network
+
+  # Data Service - хранилище данных
+  data_service:
+    build:
+      context: ../../../..
+      dockerfile: server_apps/aq_studio_data_service/Dockerfile
+    container_name: aq_test_data_service
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PG_HOST: postgres
+      PG_PORT: 5432
+      PG_DB: aq_test
+      PG_USER: aq_test
+      PG_PASSWORD: aq_test_secret
+      PORT: 8765
+      # Тестовый режим
+      DEPLOY_SCHEMA: "true"
+      LOG_LEVEL: debug
+    ports:
+      - "8766:8765"  # Другой порт для тестов
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8765/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - test_network
+
+  # Graph Engine - движок выполнения графов
+  graph_engine:
+    build:
+      context: ../../../..
+      dockerfile: server_apps/graph_engine_server/Dockerfile
+    container_name: aq_test_graph_engine
+    depends_on:
+      data_service:
+        condition: service_healthy
+    environment:
+      PORT: 8081
+      HOST: 0.0.0.0
+      DATA_SERVICE_URL: http://data_service:8765
+      USE_MOCK_AUTH: "true"
+      USE_VAULT: "false"
+      LOG_LEVEL: debug
+      TZ: UTC
+    ports:
+      - "8082:8081"  # Другой порт для тестов
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - test_network
+
+  # Test Runner - запуск E2E тестов
+  test_runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: aq_test_runner
+    depends_on:
+      graph_engine:
+        condition: service_healthy
+    environment:
+      # URLs сервисов
+      DATA_SERVICE_URL: http://data_service:8765
+      GRAPH_ENGINE_URL: http://graph_engine:8081
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: aq_test
+      POSTGRES_USER: aq_test
+      POSTGRES_PASSWORD: aq_test_secret
+      # Тестовые настройки
+      TEST_TIMEOUT: 300000  # 5 минут
+      LOG_LEVEL: debug
+    volumes:
+      # Монтируем тесты
+      - ./:/app/test
+      # Монтируем результаты
+      - ./results:/app/results
+    networks:
+      - test_network
+    # Команда запуска тестов
+    command: dart test test/e2e_tests.dart --reporter=expanded
+
+networks:
+  test_network:
+    name: aq_test_network
+    driver: bridge
+
+volumes:
+  postgres_data:
+    name: aq_test_postgres_data
