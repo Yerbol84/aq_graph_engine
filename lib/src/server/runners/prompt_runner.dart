@@ -4,10 +4,7 @@ import 'package:aq_schema/aq_schema.dart';
 import '../../interfaces/i_graph_repository.dart';
 import '../../shared/logger.dart';
 
-// Импорт узлов PromptGraph из aq_schema
 import 'package:aq_schema/graph/nodes/prompt/text_block_node.dart';
-import 'package:aq_schema/graph/nodes/prompt/conditional_block_node.dart';
-import 'package:aq_schema/graph/nodes/prompt/variable_insert_node.dart';
 
 /// Runner для компиляции PromptGraph в текстовый промпт
 ///
@@ -176,9 +173,6 @@ class PromptRunner {
         graphEngineServerLogger.warning(
           'fileContext node type not yet implemented',
         );
-        return null;
-
-      default:
         return null;
     }
   }

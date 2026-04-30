@@ -1,169 +1,106 @@
-// Prometheus метрики для Graph Engine
+// pkgs/aq_graph_engine/lib/src/server/monitoring/metrics.dart
 //
-// Собирает метрики выполнения графов для мониторинга в production
+// Метрики Graph Engine — инициализируются через IMetricsService.
+//
+// ── Использование ────────────────────────────────────────────────────────────
+//
+//   // Инициализация (один раз при старте GraphEngine):
+//   GraphEngineMetrics.init(metricsService);
+//
+//   // Использование в runner:
+//   GraphEngineMetrics.runStarted.inc(attributes: {
+//     'project_id': projectId,
+//     'blueprint_id': blueprintId,
+//   });
+//
+//   final handle = GraphEngineMetrics.runDuration.start(attributes: {
+//     'project_id': projectId,
+//   });
+//   await runner.start();
+//   handle.stop(attributes: {'status': 'completed'});
 
-import 'package:prometheus_client/prometheus_client.dart';
+import 'package:aq_schema/metrics.dart';
 
-/// Метрики Graph Engine для Prometheus
+/// Метрики Graph Engine.
+///
+/// Инициализируется один раз при старте через [GraphEngineMetrics.init].
+/// До инициализации все метрики — no-op.
 class GraphEngineMetrics {
+  static IMetricsService _service = NoopMetricsService.instance;
+
+  /// Инициализировать с конкретным сервисом метрик.
+  static void init(IMetricsService service) {
+    _service = service;
+    _setup();
+  }
+
   // ── Счётчики ────────────────────────────────────────────────────────────
+  // Атрибуты: project_id, blueprint_id
 
-  /// Общее количество запущенных графов
-  static final runStartedCounter = Counter(
-    name: 'graph_runs_started_total',
-    help: 'Total number of graph runs started',
-    labelNames: ['project_id', 'blueprint_id'],
-  );
+  /// Запуски графов.
+  /// Атрибуты: project_id, blueprint_id
+  static late ICounter runStarted;
 
-  /// Количество успешно завершенных графов
-  static final runCompletedCounter = Counter(
-    name: 'graph_runs_completed_total',
-    help: 'Total number of graph runs completed successfully',
-    labelNames: ['project_id', 'blueprint_id'],
-  );
+  /// Успешно завершённые запуски.
+  /// Атрибуты: project_id, blueprint_id
+  static late ICounter runCompleted;
 
-  /// Количество упавших графов
-  static final runFailedCounter = Counter(
-    name: 'graph_runs_failed_total',
-    help: 'Total number of graph runs failed',
-    labelNames: ['project_id', 'blueprint_id', 'error_type'],
-  );
+  /// Упавшие запуски.
+  /// Атрибуты: project_id, blueprint_id, error_type
+  static late ICounter runFailed;
 
-  /// Количество приостановленных графов (suspended)
-  static final runSuspendedCounter = Counter(
-    name: 'graph_runs_suspended_total',
-    help: 'Total number of graph runs suspended',
-    labelNames: ['project_id', 'blueprint_id'],
-  );
+  /// Приостановленные запуски (ожидают ввода пользователя).
+  /// Атрибуты: project_id, blueprint_id
+  static late ICounter runSuspended;
 
-  /// Количество выполненных узлов
-  static final nodeExecutionCounter = Counter(
-    name: 'graph_node_executions_total',
-    help: 'Total number of node executions',
-    labelNames: ['node_type', 'project_id'],
-  );
+  /// Выполненные узлы.
+  /// Атрибуты: node_type, project_id
+  static late ICounter nodeExecuted;
 
-  /// Количество retry попыток узлов
-  static final nodeRetryCounter = Counter(
-    name: 'graph_node_retries_total',
-    help: 'Total number of node retry attempts',
-    labelNames: ['node_type', 'project_id', 'attempt'],
-  );
-
-  // ── Гистограммы ─────────────────────────────────────────────────────────
-
-  /// Длительность выполнения графа
-  static final runDurationHistogram = Histogram(
-    name: 'graph_run_duration_seconds',
-    help: 'Duration of graph run execution in seconds',
-    labelNames: ['project_id', 'blueprint_id'],
-    buckets: [0.1, 0.5, 1, 2, 5, 10, 30, 60, 120, 300, 600],
-  );
-
-  /// Длительность выполнения узла
-  static final nodeExecutionHistogram = Histogram(
-    name: 'graph_node_execution_seconds',
-    help: 'Duration of individual node execution in seconds',
-    labelNames: ['node_type', 'project_id'],
-    buckets: [0.01, 0.05, 0.1, 0.5, 1, 2, 5, 10, 30, 60],
-  );
+  /// Retry попытки узлов.
+  /// Атрибуты: node_type, project_id, attempt
+  static late ICounter nodeRetried;
 
   // ── Gauge ───────────────────────────────────────────────────────────────
 
-  /// Количество активных запусков
-  static final activeRunsGauge = Gauge(
-    name: 'graph_active_runs',
-    help: 'Number of currently active graph runs',
-  );
+  /// Количество активных запусков прямо сейчас.
+  static late IGauge activeRuns;
 
-  /// Количество запусков в очереди
-  static final queuedRunsGauge = Gauge(
-    name: 'graph_queued_runs',
-    help: 'Number of runs waiting in queue',
-  );
+  // ── Таймеры ─────────────────────────────────────────────────────────────
 
-  /// Количество приостановленных запусков
-  static final suspendedRunsGauge = Gauge(
-    name: 'graph_suspended_runs',
-    help: 'Number of suspended runs waiting for input',
-  );
+  /// Длительность выполнения графа.
+  /// Атрибуты при start: project_id, blueprint_id
+  /// Атрибуты при stop:  status (completed/failed/suspended)
+  static late ITimer runDuration;
 
-  /// Количество записей в DLQ
-  static final dlqSizeGauge = Gauge(
-    name: 'graph_dlq_size',
-    help: 'Number of runs in Dead Letter Queue',
-  );
+  /// Длительность выполнения узла.
+  /// Атрибуты при start: node_type, project_id
+  /// Атрибуты при stop:  status (ok/error/retry)
+  static late ITimer nodeDuration;
 
-  /// Состояние circuit breaker (0=closed, 1=open, 2=half-open)
-  static final circuitBreakerStateGauge = Gauge(
-    name: 'graph_circuit_breaker_state',
-    help: 'Circuit breaker state (0=closed, 1=open, 2=half-open)',
-    labelNames: ['transport'],
-  );
+  // ── Инициализация ────────────────────────────────────────────────────────
 
-  /// Количество активных worker'ов
-  static final activeWorkersGauge = Gauge(
-    name: 'graph_active_workers',
-    help: 'Number of active workers',
-  );
+  static void _setup() {
+    runStarted   = _service.counter('graph_runs_started_total');
+    runCompleted = _service.counter('graph_runs_completed_total');
+    runFailed    = _service.counter('graph_runs_failed_total');
+    runSuspended = _service.counter('graph_runs_suspended_total');
+    nodeExecuted = _service.counter('graph_node_executions_total');
+    nodeRetried  = _service.counter('graph_node_retries_total');
 
-  /// Количество idle worker'ов
-  static final idleWorkersGauge = Gauge(
-    name: 'graph_idle_workers',
-    help: 'Number of idle workers',
-  );
+    activeRuns = _service.gauge('graph_active_runs');
 
-  // ── Error tracking ──────────────────────────────────────────────────────
-
-  /// Ошибки по типам
-  static final errorsByTypeCounter = Counter(
-    name: 'graph_errors_by_type_total',
-    help: 'Total number of errors by type',
-    labelNames: ['error_type', 'project_id'],
-  );
-
-  /// Retry успешность
-  static final retrySuccessCounter = Counter(
-    name: 'graph_retry_success_total',
-    help: 'Total number of successful retries',
-    labelNames: ['node_type', 'attempt'],
-  );
-
-  /// Circuit breaker открытия
-  static final circuitBreakerOpenCounter = Counter(
-    name: 'graph_circuit_breaker_open_total',
-    help: 'Total number of circuit breaker opens',
-    labelNames: ['transport'],
-  );
-
-  // ── Регистрация ─────────────────────────────────────────────────────────
-
-  /// Зарегистрировать все метрики в registry
-  static void register() {
-    final registry = CollectorRegistry.defaultRegistry;
-
-    // Счётчики
-    registry.register(runStartedCounter);
-    registry.register(runCompletedCounter);
-    registry.register(runFailedCounter);
-    registry.register(runSuspendedCounter);
-    registry.register(nodeExecutionCounter);
-    registry.register(nodeRetryCounter);
-    registry.register(errorsByTypeCounter);
-    registry.register(retrySuccessCounter);
-    registry.register(circuitBreakerOpenCounter);
-
-    // Гистограммы
-    registry.register(runDurationHistogram);
-    registry.register(nodeExecutionHistogram);
-
-    // Gauge
-    registry.register(activeRunsGauge);
-    registry.register(queuedRunsGauge);
-    registry.register(suspendedRunsGauge);
-    registry.register(dlqSizeGauge);
-    registry.register(circuitBreakerStateGauge);
-    registry.register(activeWorkersGauge);
-    registry.register(idleWorkersGauge);
+    runDuration = _service.timer(
+      'graph_run_duration_seconds',
+      buckets: [0.1, 0.5, 1, 2, 5, 10, 30, 60, 120, 300, 600],
+    );
+    nodeDuration = _service.timer(
+      'graph_node_duration_seconds',
+      buckets: [0.01, 0.05, 0.1, 0.5, 1, 2, 5, 10, 30, 60],
+    );
   }
+
+  // Инициализируем noop сразу — до первого вызова init()
+  // ignore: unused_field
+  static final bool _initialized = () { _setup(); return true; }();
 }

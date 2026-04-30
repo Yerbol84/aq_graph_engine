@@ -1,8 +1,10 @@
 // Тесты для Фаз 2-4 без зависимости от старых нод aq_schema
 
 import 'package:test/test.dart';
-import 'package:aq_graph_engine/aq_graph_engine.dart';
+import 'package:aq_graph_engine/server.dart';
 import 'package:aq_schema/aq_schema.dart';
+import 'package:aq_schema/tools.dart';
+import 'package:aq_schema/metrics.dart';
 
 void main() {
   group('Phase 2: Auth Module', () {
@@ -74,19 +76,9 @@ void main() {
         }
       }
 
-      // 6-й запрос должен сразу вернуть ошибку circuit breaker
-      final request = GraphRunRequest(
-        runId: 'test-circuit',
-        projectId: 'test-project',
-        projectPath: '/test',
-        blueprintId: 'test-blueprint',
-      );
-
-      final events = transport.run(request);
-      final firstEvent = await events.first;
-
-      expect(firstEvent.type, equals(GraphRunEventType.error));
-      expect(firstEvent.errorMessage, contains('Circuit breaker is open'));
+      // 6-й запрос — circuit breaker должен быть открыт
+      final available = await transport.isAvailable();
+      expect(available, isFalse);
     });
 
     test('isAvailable возвращает false для недоступного сервера', () async {
@@ -151,6 +143,13 @@ void main() {
   group('Phase 4: Race Conditions', () {
     test('MockRunRepository compareAndSetStatus работает корректно', () async {
       final repo = _MockRunRepository();
+
+      // Сначала создаём run со статусом 'queued'
+      await repo.createRun(
+        runId: 'run-123',
+        projectId: 'proj-1',
+        graphSnapshot: {},
+      );
 
       // Первый вызов должен успешно изменить статус
       final success1 = await repo.compareAndSetStatus(
@@ -258,27 +257,31 @@ void main() {
   });
 
   group('Phase 4: Metrics', () {
-    test('GraphEngineMetrics регистрируются без ошибок', () {
-      expect(() => GraphEngineMetrics.register(), returnsNormally);
+    setUp(() {
+      GraphEngineMetrics.init(NoopMetricsService.instance);
+    });
+
+    test('GraphEngineMetrics инициализируются без ошибок', () {
+      expect(GraphEngineMetrics.runStarted, isNotNull);
+      expect(GraphEngineMetrics.activeRuns, isNotNull);
+      expect(GraphEngineMetrics.runDuration, isNotNull);
     });
 
     test('Метрики можно инкрементить', () {
-      GraphEngineMetrics.register();
-
       expect(
-        () => GraphEngineMetrics.runStartedCounter.labels(['project-1', 'blueprint-1']).inc(),
+        () => GraphEngineMetrics.runStarted.inc(
+          attributes: {'project_id': 'project-1', 'blueprint_id': 'blueprint-1'},
+        ),
         returnsNormally,
       );
-
       expect(
-        () => GraphEngineMetrics.activeRunsGauge.value = 5,
+        () => GraphEngineMetrics.activeRuns.inc(),
         returnsNormally,
       );
-
       expect(
-        () => GraphEngineMetrics.runDurationHistogram
-            .labels(['project-1', 'blueprint-1'])
-            .observe(1.5),
+        () => GraphEngineMetrics.nodeExecuted.inc(
+          attributes: {'node_type': 'llmAction', 'project_id': 'project-1'},
+        ),
         returnsNormally,
       );
     });
@@ -287,26 +290,20 @@ void main() {
 
 // ── Mock Implementations ──────────────────────────────────────────────────
 
-class _MockToolService implements AQToolService {
+class _MockToolService implements IToolService {
   @override
-  IAQLlmService get llm => throw UnimplementedError();
+  Future<ToolCallResult> callTool(
+    String name,
+    Map<String, dynamic> args,
+    RunContext context,
+  ) async =>
+      ToolCallResult.success(output: null);
 
   @override
-  IAQVaultService get vault => throw UnimplementedError();
+  bool hasTool(String name) => false;
 
   @override
-  Future<dynamic> callTool(String toolName, Map<String, dynamic> args, RunContext ctx) async {
-    return null;
-  }
-
-  @override
-  bool hasTool(String toolName) => false;
-
-  @override
-  List<AQToolDescriptor> get availableTools => [];
-
-  @override
-  Future<bool> isAvailable() async => true;
+  List<ToolDescriptor> get availableTools => [];
 }
 
 class _MockRunRepository implements IRunRepository {

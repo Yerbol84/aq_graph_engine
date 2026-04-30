@@ -1,7 +1,7 @@
 // Тесты для защиты от циклов в InstructionRunner
 
 import 'package:test/test.dart';
-import 'package:aq_graph_engine/src/runners/instruction_runner.dart';
+import 'package:aq_graph_engine/server.dart';
 
 void main() {
   group('InstructionRunner cycle protection', () {

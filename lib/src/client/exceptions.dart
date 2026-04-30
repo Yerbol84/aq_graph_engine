@@ -17,12 +17,8 @@ class GraphEngineException implements Exception {
   @override
   String toString() {
     final buffer = StringBuffer('GraphEngineException: $message');
-    if (statusCode != null) {
-      buffer.write(' (HTTP $statusCode)');
-    }
-    if (code != null) {
-      buffer.write(' [code: $code]');
-    }
+    if (statusCode != null) buffer.write(' (HTTP $statusCode)');
+    if (code != null) buffer.write(' [code: $code]');
     return buffer.toString();
   }
 }
@@ -30,104 +26,69 @@ class GraphEngineException implements Exception {
 /// Ошибка подключения к серверу
 class GraphEngineConnectionException extends GraphEngineException {
   GraphEngineConnectionException(
-    String message, {
-    int? statusCode,
-    String? code,
-    dynamic details,
-  }) : super(
-          message,
-          statusCode: statusCode,
-          code: code,
-          details: details,
-        );
+    super.message, {
+    super.statusCode,
+    super.code,
+    super.details,
+  });
 }
 
 /// Таймаут запроса
 class GraphEngineTimeoutException extends GraphEngineException {
   GraphEngineTimeoutException(
-    String message, {
-    int? statusCode,
-    String? code,
-    dynamic details,
-  }) : super(
-          message,
-          statusCode: statusCode,
-          code: code,
-          details: details,
-        );
+    super.message, {
+    super.statusCode,
+    super.code,
+    super.details,
+  });
 }
 
 /// Ресурс не найден (404)
 class GraphEngineNotFoundException extends GraphEngineException {
   GraphEngineNotFoundException(
-    String message, {
+    super.message, {
     int? statusCode,
-    String? code,
-    dynamic details,
-  }) : super(
-          message,
-          statusCode: statusCode ?? 404,
-          code: code,
-          details: details,
-        );
+    super.code,
+    super.details,
+  }) : super(statusCode: statusCode ?? 404);
 }
 
 /// Ошибка авторизации (401)
 class GraphEngineUnauthorizedException extends GraphEngineException {
   GraphEngineUnauthorizedException(
-    String message, {
+    super.message, {
     int? statusCode,
-    String? code,
-    dynamic details,
-  }) : super(
-          message,
-          statusCode: statusCode ?? 401,
-          code: code,
-          details: details,
-        );
+    super.code,
+    super.details,
+  }) : super(statusCode: statusCode ?? 401);
 }
 
 /// Недостаточно прав (403)
 class GraphEngineForbiddenException extends GraphEngineException {
   GraphEngineForbiddenException(
-    String message, {
+    super.message, {
     int? statusCode,
-    String? code,
-    dynamic details,
-  }) : super(
-          message,
-          statusCode: statusCode ?? 403,
-          code: code,
-          details: details,
-        );
+    super.code,
+    super.details,
+  }) : super(statusCode: statusCode ?? 403);
 }
 
 /// Ошибка валидации (400)
 class GraphEngineValidationException extends GraphEngineException {
   GraphEngineValidationException(
-    String message, {
+    super.message, {
     int? statusCode,
-    String? code,
-    dynamic details,
-  }) : super(
-          message,
-          statusCode: statusCode ?? 400,
-          code: code,
-          details: details,
-        );
+    super.code,
+    super.details,
+  }) : super(statusCode: statusCode ?? 400);
 }
 
 /// Внутренняя ошибка сервера (500)
 class GraphEngineServerException extends GraphEngineException {
   GraphEngineServerException(
-    String message, {
+    super.message, {
     int? statusCode,
-    String? code,
-    dynamic details,
-  }) : super(
-          message,
-          statusCode: statusCode ?? 500,
-          code: code,
-          details: details,
-        );
+    super.code,
+    super.details,
+  }) : super(statusCode: statusCode ?? 500);
 }

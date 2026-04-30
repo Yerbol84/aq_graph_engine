@@ -2,11 +2,13 @@
 // Приложение создаёт один экземпляр GraphEngine и работает только через него.
 
 import 'package:aq_schema/aq_schema.dart';
+import 'package:aq_schema/tools.dart';
+import 'package:aq_schema/metrics.dart';
 import '../../interfaces/i_run_repository.dart';
 import '../../interfaces/i_graph_repository.dart';
 import '../../transport/local_engine_transport.dart';
 import '../../transport/http_engine_transport.dart';
-import '../registry/node_type_registry.dart';
+import '../monitoring/metrics.dart' show GraphEngineMetrics;
 
 /// Режим работы GraphEngine
 enum GraphEngineMode {
@@ -21,10 +23,9 @@ enum GraphEngineMode {
 }
 
 class GraphEngine {
-  final AQToolService tools;
+  final IToolService tools;
   final IRunRepository runRepo;
   final IGraphRepository graphRepo;
-  final NodeTypeRegistry nodeRegistry;
   final AQAuthClient? auth;
   final GraphEngineMode mode;
   final String? remoteServerUrl;
@@ -34,26 +35,24 @@ class GraphEngine {
     required this.tools,
     required this.runRepo,
     required this.graphRepo,
-    NodeTypeRegistry? nodeRegistry,
     this.auth,
     this.mode = GraphEngineMode.local,
     this.remoteServerUrl,
     IEngineTransport? transport,
-  }) : nodeRegistry = nodeRegistry ?? buildDefaultRegistry() {
-    // Если передан готовый транспорт — используем его
+  }) {
+    GraphEngineMetrics.init(IMetricsService.instance);
+
     if (transport != null) {
       _transport = transport;
       return;
     }
 
-    // Иначе создаём транспорт на основе режима
     switch (mode) {
       case GraphEngineMode.local:
         _transport = LocalEngineTransport(
           tools: tools,
           runRepo: runRepo,
           graphRepo: graphRepo,
-          nodeRegistry: this.nodeRegistry,
           auth: auth,
         );
         break;
@@ -71,31 +70,24 @@ class GraphEngine {
         break;
 
       case GraphEngineMode.auto:
-        // Пытаемся создать remote транспорт
         if (remoteServerUrl != null) {
-          final httpTransport = HttpEngineTransport(
-            serverUrl: remoteServerUrl!,
-            auth: auth,
-          );
-
-          // Проверяем доступность асинхронно при первом запуске
           _transport = _AutoFallbackTransport(
-            primary: httpTransport,
+            primary: HttpEngineTransport(
+              serverUrl: remoteServerUrl!,
+              auth: auth,
+            ),
             fallback: LocalEngineTransport(
               tools: tools,
               runRepo: runRepo,
               graphRepo: graphRepo,
-              nodeRegistry: this.nodeRegistry,
               auth: auth,
             ),
           );
         } else {
-          // Если URL не указан — используем local
           _transport = LocalEngineTransport(
             tools: tools,
             runRepo: runRepo,
             graphRepo: graphRepo,
-            nodeRegistry: this.nodeRegistry,
             auth: auth,
           );
         }
@@ -127,25 +119,19 @@ class _AutoFallbackTransport implements IEngineTransport {
   DateTime? _lastCheck;
   final Duration _recheckInterval = const Duration(minutes: 1);
 
-  _AutoFallbackTransport({
-    required this.primary,
-    required this.fallback,
-  });
+  _AutoFallbackTransport({required this.primary, required this.fallback});
 
   Future<IEngineTransport> _selectTransport() async {
-    // Проверяем доступность primary раз в минуту
     final now = DateTime.now();
     if (_lastCheck == null || now.difference(_lastCheck!) > _recheckInterval) {
       _lastCheck = now;
       _primaryAvailable = await primary.isAvailable();
-
       if (_primaryAvailable) {
         print('✅ Remote server available, using HttpEngineTransport');
       } else {
         print('⚠️ Remote server unavailable, falling back to LocalEngineTransport');
       }
     }
-
     return _primaryAvailable ? primary : fallback;
   }
 
@@ -168,9 +154,8 @@ class _AutoFallbackTransport implements IEngineTransport {
   }
 
   @override
-  Future<bool> isAvailable() async {
-    return await primary.isAvailable() || await fallback.isAvailable();
-  }
+  Future<bool> isAvailable() async =>
+      await primary.isAvailable() || await fallback.isAvailable();
 
   @override
   void dispose() {

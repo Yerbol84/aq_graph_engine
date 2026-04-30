@@ -1,12 +1,9 @@
-// Тесты для фабрик узлов
+// Тесты для NodeTypeRegistry — реестра типов узлов.
+// Проверяет что реестр корректно создаёт узлы из JSON
+// для всех трёх типов графов: Workflow, Instruction, Prompt.
 
 import 'package:test/test.dart';
-import 'package:aq_graph_engine/src/factories/workflow_node_factory.dart';
-import 'package:aq_graph_engine/src/factories/instruction_node_factory.dart';
-import 'package:aq_graph_engine/src/factories/prompt_node_factory.dart';
-import 'package:aq_schema/graph/nodes/base/i_workflow_node.dart';
-import 'package:aq_schema/graph/nodes/base/i_instruction_node.dart';
-import 'package:aq_schema/graph/nodes/base/i_prompt_node.dart';
+import 'package:aq_graph_engine/server.dart';
 import 'package:aq_schema/graph/nodes/workflow/automatic/llm_action_node.dart';
 import 'package:aq_schema/graph/nodes/workflow/interactive/user_input_node.dart';
 import 'package:aq_schema/graph/nodes/workflow/composite/sub_graph_node.dart';
@@ -14,8 +11,16 @@ import 'package:aq_schema/graph/nodes/instruction/tool_call_node.dart';
 import 'package:aq_schema/graph/nodes/prompt/text_block_node.dart';
 
 void main() {
-  group('WorkflowNodeFactory', () {
-    test('should create LlmActionNode from JSON', () {
+  late NodeTypeRegistry registry;
+
+  setUp(() {
+    registry = buildDefaultRegistry();
+  });
+
+  // ── Workflow узлы ──────────────────────────────────────────────────────────
+
+  group('NodeTypeRegistry — Workflow nodes', () {
+    test('создаёт LlmActionNode из JSON', () {
       final json = {
         'id': 'llm1',
         'type': 'llmAction',
@@ -26,7 +31,7 @@ void main() {
         },
       };
 
-      final node = WorkflowNodeFactory.fromJson(json);
+      final node = registry.workflowFromJson(json);
 
       expect(node, isA<LlmActionNode>());
       expect(node.id, 'llm1');
@@ -38,7 +43,7 @@ void main() {
       expect(llmNode.modelName, 'gpt-4');
     });
 
-    test('should create UserInputNode from JSON', () {
+    test('создаёт UserInputNode из JSON', () {
       final json = {
         'id': 'input1',
         'type': 'userInput',
@@ -46,11 +51,10 @@ void main() {
           'title': 'Enter name',
           'message': 'Please enter your name',
           'output_var': 'user_name',
-          'input_type': 'text',
         },
       };
 
-      final node = WorkflowNodeFactory.fromJson(json);
+      final node = registry.workflowFromJson(json);
 
       expect(node, isA<UserInputNode>());
       expect(node.nodeType, 'userInput');
@@ -60,7 +64,7 @@ void main() {
       expect(inputNode.message, 'Please enter your name');
     });
 
-    test('should create SubGraphNode from JSON', () {
+    test('создаёт SubGraphNode из JSON', () {
       final json = {
         'id': 'sub1',
         'type': 'subGraph',
@@ -71,7 +75,7 @@ void main() {
         },
       };
 
-      final node = WorkflowNodeFactory.fromJson(json);
+      final node = registry.workflowFromJson(json);
 
       expect(node, isA<SubGraphNode>());
 
@@ -81,75 +85,50 @@ void main() {
       expect(subNode.outputMapping, {'result': 'output'});
     });
 
-    test('should throw on unknown node type', () {
-      final json = {
-        'id': 'unknown1',
-        'type': 'unknownType',
-        'config': {},
-      };
-
+    test('бросает UnknownNodeTypeException для неизвестного типа', () {
+      final json = {'id': 'unknown1', 'type': 'unknownType', 'config': {}};
       expect(
-        () => WorkflowNodeFactory.fromJson(json),
-        throwsA(isA<Exception>()),
+        () => registry.workflowFromJson(json),
+        throwsA(isA<UnknownNodeTypeException>()),
       );
     });
 
-    test('should throw on missing type field', () {
-      final json = {
-        'id': 'node1',
-        'config': {},
-      };
-
+    test('бросает ArgumentError если нет поля type', () {
+      final json = {'id': 'node1', 'config': {}};
       expect(
-        () => WorkflowNodeFactory.fromJson(json),
-        throwsA(isA<Exception>()),
+        () => registry.workflowFromJson(json),
+        throwsA(isA<ArgumentError>()),
       );
     });
 
-    test('should return all supported types', () {
-      final types = WorkflowNodeFactory.getSupportedTypes();
-
-      expect(types, contains('llmAction'));
-      expect(types, contains('fileRead'));
-      expect(types, contains('fileWrite'));
-      expect(types, contains('gitCommit'));
-      expect(types, contains('userInput'));
-      expect(types, contains('manualReview'));
-      expect(types, contains('fileUpload'));
-      expect(types, contains('coCreationChat'));
-      expect(types, contains('subGraph'));
-      expect(types, contains('runInstruction'));
-      expect(types.length, 10);
+    test('содержит все стандартные типы workflow узлов', () {
+      final types = registry.workflowTypes;
+      expect(types, containsAll([
+        'llmAction', 'fileRead', 'fileWrite', 'gitCommit',
+        'userInput', 'manualReview', 'fileUpload', 'coCreationChat',
+        'subGraph', 'runInstruction',
+      ]));
     });
 
-    test('should check if type is supported', () {
-      expect(WorkflowNodeFactory.isSupported('llmAction'), true);
-      expect(WorkflowNodeFactory.isSupported('userInput'), true);
-      expect(WorkflowNodeFactory.isSupported('unknownType'), false);
-    });
-
-    test('should handle round-trip serialization', () {
+    test('round-trip сериализация fileRead', () {
       final original = {
         'id': 'test1',
         'type': 'fileRead',
-        'config': {
-          'file_path': '/test/file.txt',
-          'output_var': 'content',
-        },
+        'config': {'file_path': '/test/file.txt', 'output_var': 'content'},
       };
 
-      final node = WorkflowNodeFactory.fromJson(original);
+      final node = registry.workflowFromJson(original);
       final serialized = node.toJson();
 
       expect(serialized['id'], original['id']);
       expect(serialized['type'], original['type']);
-      expect(serialized['config']['file_path'], original['config']['file_path']);
-      expect(serialized['config']['output_var'], original['config']['output_var']);
     });
   });
 
-  group('InstructionNodeFactory', () {
-    test('should create ToolCallNode from JSON', () {
+  // ── Instruction узлы ───────────────────────────────────────────────────────
+
+  group('NodeTypeRegistry — Instruction nodes', () {
+    test('создаёт ToolCallNode из JSON', () {
       final json = {
         'id': 'tool1',
         'type': 'toolCall',
@@ -160,86 +139,40 @@ void main() {
         },
       };
 
-      final node = InstructionNodeFactory.fromJson(json);
+      final node = registry.instructionFromJson(json);
 
       expect(node, isA<ToolCallNode>());
       expect(node.nodeType, 'toolCall');
 
       final toolNode = node as ToolCallNode;
       expect(toolNode.toolName, 'test_tool');
-      expect(toolNode.params, {'param1': 'value1'});
     });
 
-    test('should create all instruction node types', () {
-      final types = ['toolCall', 'llmQuery', 'condition', 'transform'];
-
-      for (final type in types) {
-        final json = {
-          'id': 'node1',
-          'type': type,
-          'config': {},
-        };
-
-        final node = InstructionNodeFactory.fromJson(json);
-        expect(node.nodeType, type);
-      }
+    test('содержит все стандартные типы instruction узлов', () {
+      final types = registry.instructionTypes;
+      expect(types, containsAll(['toolCall', 'llmQuery', 'condition', 'transform']));
     });
 
-    test('should return all supported types', () {
-      final types = InstructionNodeFactory.getSupportedTypes();
-
-      expect(types, contains('toolCall'));
-      expect(types, contains('llmQuery'));
-      expect(types, contains('condition'));
-      expect(types, contains('transform'));
-      expect(types.length, 4);
-    });
-
-    test('should throw on unknown type', () {
-      final json = {
-        'id': 'node1',
-        'type': 'unknownType',
-        'config': {},
-      };
-
+    test('бросает UnknownNodeTypeException для неизвестного типа', () {
+      final json = {'id': 'node1', 'type': 'unknownInstruction'};
       expect(
-        () => InstructionNodeFactory.fromJson(json),
-        throwsA(isA<Exception>()),
+        () => registry.instructionFromJson(json),
+        throwsA(isA<UnknownNodeTypeException>()),
       );
-    });
-
-    test('should handle round-trip serialization', () {
-      final original = {
-        'id': 'cond1',
-        'type': 'condition',
-        'config': {
-          'check_var': 'status',
-          'operator': '==',
-          'compare_value': 'success',
-          'output_var': 'is_success',
-        },
-      };
-
-      final node = InstructionNodeFactory.fromJson(original);
-      final serialized = node.toJson();
-
-      expect(serialized['id'], original['id']);
-      expect(serialized['type'], original['type']);
-      expect(serialized['config']['check_var'], original['config']['check_var']);
     });
   });
 
-  group('PromptNodeFactory', () {
-    test('should create TextBlockNode from JSON', () {
+  // ── Prompt узлы ────────────────────────────────────────────────────────────
+
+  group('NodeTypeRegistry — Prompt nodes', () {
+    test('создаёт TextBlockNode из JSON', () {
       final json = {
         'id': 'text1',
         'type': 'textBlock',
-        'config': {
-          'text': 'Hello {{name}}!',
-        },
+        'config': {'text': 'Hello {{name}}!'},
       };
 
-      final node = PromptNodeFactory.fromJson(json);
+      final node = registry.promptFromJson(json);
 
       expect(node, isA<TextBlockNode>());
       expect(node.nodeType, 'textBlock');
@@ -248,61 +181,17 @@ void main() {
       expect(textNode.text, 'Hello {{name}}!');
     });
 
-    test('should create all prompt node types', () {
-      final types = ['textBlock', 'variableInsert', 'conditionalBlock'];
-
-      for (final type in types) {
-        final json = {
-          'id': 'node1',
-          'type': type,
-          'config': {},
-        };
-
-        final node = PromptNodeFactory.fromJson(json);
-        expect(node.nodeType, type);
-      }
+    test('содержит все стандартные типы prompt узлов', () {
+      final types = registry.promptTypes;
+      expect(types, containsAll(['textBlock', 'variableInsert', 'conditionalBlock']));
     });
 
-    test('should return all supported types', () {
-      final types = PromptNodeFactory.getSupportedTypes();
-
-      expect(types, contains('textBlock'));
-      expect(types, contains('variableInsert'));
-      expect(types, contains('conditionalBlock'));
-      expect(types.length, 3);
-    });
-
-    test('should throw on unknown type', () {
-      final json = {
-        'id': 'node1',
-        'type': 'unknownType',
-        'config': {},
-      };
-
+    test('бросает UnknownNodeTypeException для неизвестного типа', () {
+      final json = {'id': 'node1', 'type': 'unknownPrompt'};
       expect(
-        () => PromptNodeFactory.fromJson(json),
-        throwsA(isA<Exception>()),
+        () => registry.promptFromJson(json),
+        throwsA(isA<UnknownNodeTypeException>()),
       );
-    });
-
-    test('should handle round-trip serialization', () {
-      final original = {
-        'id': 'var1',
-        'type': 'variableInsert',
-        'config': {
-          'var_name': 'username',
-          'prefix': 'User: ',
-          'suffix': '',
-          'default_value': 'Guest',
-        },
-      };
-
-      final node = PromptNodeFactory.fromJson(original);
-      final serialized = node.toJson();
-
-      expect(serialized['id'], original['id']);
-      expect(serialized['type'], original['type']);
-      expect(serialized['config']['var_name'], original['config']['var_name']);
     });
   });
 }

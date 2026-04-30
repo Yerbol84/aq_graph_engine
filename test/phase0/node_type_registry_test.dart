@@ -1,7 +1,7 @@
 // Тесты для NodeTypeRegistry
 
 import 'package:test/test.dart';
-import 'package:aq_graph_engine/src/registry/node_type_registry.dart';
+import 'package:aq_graph_engine/server.dart';
 import 'package:aq_schema/graph/nodes/workflow/automatic/llm_action_node.dart';
 import 'package:aq_schema/graph/nodes/workflow/interactive/user_input_node.dart';
 import 'package:aq_schema/graph/nodes/instruction/condition_node.dart';

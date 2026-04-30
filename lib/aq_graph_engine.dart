@@ -14,6 +14,7 @@ export 'src/transport/http_engine_transport.dart';
 
 // Клиентская библиотека
 export 'src/client/graph_engine_client.dart';
+export 'src/client/http_graph_engine_client.dart';
 export 'src/client/graph_run_stream.dart';
 export 'src/client/models.dart';
 export 'src/client/exceptions.dart';

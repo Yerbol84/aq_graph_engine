@@ -6,17 +6,18 @@
 
 import 'dart:async';
 import 'package:aq_schema/aq_schema.dart';
+import 'package:aq_schema/tools.dart';
+import 'package:aq_schema/graph/nodes/base/i_workflow_node.dart';
 import '../interfaces/i_run_repository.dart';
 import '../interfaces/i_graph_repository.dart';
-import '../server/runners/polymorphic_workflow_runner.dart';
+import '../server/runners/workflow_runner.dart';
 import '../server/registry/node_type_registry.dart';
 import '../server/engine/engine_execution_context.dart';
 
 class LocalEngineTransport implements IEngineTransport {
-  final AQToolService tools;
+  final IToolService tools;
   final IRunRepository runRepo;
   final IGraphRepository graphRepo;
-  final NodeTypeRegistry nodeRegistry;
   final AQAuthClient? auth;
 
   // Активные контроллеры для отмены запусков
@@ -26,9 +27,8 @@ class LocalEngineTransport implements IEngineTransport {
     required this.tools,
     required this.runRepo,
     required this.graphRepo,
-    NodeTypeRegistry? nodeRegistry,
     this.auth,
-  }) : nodeRegistry = nodeRegistry ?? buildDefaultRegistry();
+  });
 
   @override
   Stream<GraphRunEvent> run(GraphRunRequest request) {
@@ -77,11 +77,35 @@ class LocalEngineTransport implements IEngineTransport {
 
       print('✅ LocalEngineTransport: Graph loaded: ${graph.runtimeType}');
 
-      if (graph is! WorkflowGraph) {
-        print('❌ LocalEngineTransport: Wrong graph type: ${graph.runtimeType}');
+      // Конвертируем WorkflowGraph (deprecated) в TypedWorkflowGraph если нужно
+      TypedWorkflowGraph typedGraph;
+      if (graph is TypedWorkflowGraph) {
+        typedGraph = graph;
+      } else if (graph is WorkflowGraph) { // ignore: deprecated_member_use
+        // Конвертируем через NodeTypeRegistry
+        final registry = buildDefaultRegistry();
+        final typedNodes = <String, IWorkflowNode>{};
+        for (final entry in graph.nodes.entries) {
+          try {
+            typedNodes[entry.key] = registry.workflowFromJson(entry.value.toJson());
+          } catch (e) {
+            print('⚠️ LocalEngineTransport: Cannot convert node ${entry.key}: $e');
+          }
+        }
+        typedGraph = TypedWorkflowGraph(
+          id: graph.id,
+          tenantId: graph.tenantId,
+          ownerId: graph.ownerId,
+          name: graph.name,
+          nodes: typedNodes,
+          edges: graph.edges,
+        );
+        print('✅ LocalEngineTransport: Converted WorkflowGraph → TypedWorkflowGraph');
+      } else {
+        print('❌ LocalEngineTransport: Unsupported graph type: ${graph.runtimeType}');
         controller.add(GraphRunEvent.error(
           runId: request.runId,
-          message: 'Expected WorkflowGraph, got ${graph.runtimeType}',
+          message: 'Unsupported graph type: ${graph.runtimeType}',
         ));
         return;
       }
@@ -91,7 +115,7 @@ class LocalEngineTransport implements IEngineTransport {
         runId: request.runId,
         projectId: request.projectId,
         projectPath: request.projectPath,
-        graph: graph,
+        graph: typedGraph,
         initialVariables: request.initialVariables,
         resumeStateJson: request.resumeStateJson,
         resumeFromNodeId: request.resumeFromNodeId,
@@ -113,10 +137,10 @@ class LocalEngineTransport implements IEngineTransport {
         status: GraphRunStatus.running,
       ));
 
-      print('🏗️ LocalEngineTransport: Creating PolymorphicWorkflowRunner...');
+      print('🏗️ LocalEngineTransport: Creating WorkflowRunner...');
 
       // 4. Создаём runner с загруженным графом из контекста
-      final runner = PolymorphicWorkflowRunner(
+      final runner = WorkflowRunner(
         runId: execContext.runId,
         projectId: execContext.projectId,
         projectPath: execContext.projectPath,
@@ -124,7 +148,6 @@ class LocalEngineTransport implements IEngineTransport {
         repo: _RunRepoWithEvents(runRepo, execContext.runId, controller),
         graphRepo: graphRepo,
         tools: tools,
-        nodeRegistry: nodeRegistry,
       );
 
       print('▶️ LocalEngineTransport: Starting runner...');

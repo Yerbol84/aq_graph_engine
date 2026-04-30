@@ -4,6 +4,8 @@
 import 'package:aq_schema/graph/nodes/base/i_workflow_node.dart';
 import 'package:aq_schema/graph/nodes/base/i_instruction_node.dart';
 import 'package:aq_schema/graph/nodes/base/i_prompt_node.dart';
+import 'package:aq_schema/graph/graphs/typed_workflow_graph.dart'
+    show IWorkflowNodeSerializer;
 import 'package:aq_schema/graph/nodes/workflow/automatic/llm_action_node.dart';
 import 'package:aq_schema/graph/nodes/workflow/automatic/file_read_node.dart';
 import 'package:aq_schema/graph/nodes/workflow/automatic/file_write_node.dart';
@@ -37,12 +39,15 @@ class UnknownNodeTypeException implements Exception {
 
 /// Реестр типов узлов с раздельными namespace для workflow/instruction/prompt
 ///
+/// Реализует [IWorkflowNodeSerializer] — может использоваться для десериализации
+/// TypedWorkflowGraph из БД.
+///
 /// Использование:
 /// ```dart
 /// final registry = buildDefaultRegistry();
 /// final node = registry.workflowFromJson({'type': 'llmAction', ...});
 /// ```
-class NodeTypeRegistry {
+class NodeTypeRegistry implements IWorkflowNodeSerializer {
   final Map<String, IWorkflowNode Function(Map<String, dynamic>)> _workflowFactories = {};
   final Map<String, IInstructionNode Function(Map<String, dynamic>)> _instructionFactories = {};
   final Map<String, IPromptNode Function(Map<String, dynamic>)> _promptFactories = {};
@@ -72,6 +77,11 @@ class NodeTypeRegistry {
   }
 
   /// Создать workflow узел из JSON
+  /// Реализует [IWorkflowNodeSerializer.fromJson]
+  @override
+  IWorkflowNode fromJson(Map<String, dynamic> json) => workflowFromJson(json);
+
+  /// Создать workflow узел из JSON (алиас для fromJson)
   IWorkflowNode workflowFromJson(Map<String, dynamic> json) {
     final type = json['type'] as String?;
     if (type == null || type.isEmpty) {

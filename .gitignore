@@ -1,3 +1,100 @@
-# https://dart.dev/guides/libraries/private-files
-# Created by `dart pub`
+# ----------------------------------------------------------------------------
+# Flutter/Dart Git Ignore
+# ----------------------------------------------------------------------------
+
+# Артефакты сборки Flutter
+bin/
+build/
+lib/generated/
 .dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+
+# Файлы, генерируемые для веба
+lib/generated_plugin_registrant.dart
+
+# Символические ссылки на плагины
+.plugin_symlinks/
+
+# Файлы конфигурации инструментов (если они не должны быть в репозитории)
+pubspec.lock
+
+# ----------------------------------------------------------------------------
+# Android
+# ----------------------------------------------------------------------------
+.gradle/
+local.properties
+*.kwks
+*.keystore
+*.jks
+gradle-wrapper.jar
+.cxx/
+capture/
+android/**/generated/
+android/key.properties
+
+# ----------------------------------------------------------------------------
+# iOS / macOS
+# ----------------------------------------------------------------------------
+*.swp
+*.lock
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xccheckout
+xcuserdata/
+DerivedData/
+*.moved-aside
+DerivedData/
+CodeResources
+*.ipa
+*.app
+*.framework
+*.dSYM
+*.config
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+ios/Flutter/Flutter.podspec
+macos/Flutter/ephemeral/
+
+# CocoaPods
+Pods/
+ServiceDefinitions.json
+
+# ----------------------------------------------------------------------------
+# IDE и редакторы
+# ----------------------------------------------------------------------------
+
+# Visual Studio Code
+.vscode/
+!.vscode/extensions.json
+*.code-workspace
+
+# IntelliJ / Android Studio
+.idea/
+*.iml
+*.iws
+*.ipr
+cmake-build-*/
+
+# ----------------------------------------------------------------------------
+# Системные файлы
+# ----------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ----------------------------------------------------------------------------
+# Прочее
+# ----------------------------------------------------------------------------
+# Логи и временные файлы
+*.log
+*.temp
+*.tmp
+
+# Секреты и переменные окружения
+.env*
+!.env.example

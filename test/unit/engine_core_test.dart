@@ -2,7 +2,8 @@
 // Тестируем только core функциональность: Auth, Transport, Modes, Race Conditions, DLQ, Metrics
 
 import 'package:test/test.dart';
-import 'package:aq_graph_engine/aq_graph_engine.dart';
+import 'package:aq_graph_engine/server.dart';
+import 'package:aq_schema/metrics.dart';
 
 void main() {
   group('Phase 2: Auth Module', () {
@@ -113,32 +114,31 @@ void main() {
   });
 
   group('Phase 4: Metrics', () {
-    test('GraphEngineMetrics регистрируются без ошибок', () {
-      // Метрики регистрируются только один раз
-      try {
-        GraphEngineMetrics.register();
-      } catch (e) {
-        // Игнорируем если уже зарегистрированы
-      }
-      expect(true, isTrue);
+    setUp(() {
+      GraphEngineMetrics.init(NoopMetricsService.instance);
+    });
+
+    test('GraphEngineMetrics инициализируются без ошибок', () {
+      expect(GraphEngineMetrics.runStarted, isNotNull);
+      expect(GraphEngineMetrics.activeRuns, isNotNull);
+      expect(GraphEngineMetrics.runDuration, isNotNull);
     });
 
     test('Метрики можно инкрементить', () {
-      // Метрики уже зарегистрированы в предыдущем тесте
       expect(
-        () => GraphEngineMetrics.runStartedCounter.labels(['project-1', 'blueprint-1']).inc(),
+        () => GraphEngineMetrics.runStarted.inc(
+          attributes: {'project_id': 'p1', 'blueprint_id': 'b1'},
+        ),
         returnsNormally,
       );
-
       expect(
-        () => GraphEngineMetrics.activeRunsGauge.value = 5,
+        () => GraphEngineMetrics.activeRuns.inc(),
         returnsNormally,
       );
-
       expect(
-        () => GraphEngineMetrics.runDurationHistogram
-            .labels(['project-1', 'blueprint-1'])
-            .observe(1.5),
+        () => GraphEngineMetrics.nodeExecuted.inc(
+          attributes: {'node_type': 'llmAction', 'project_id': 'p1'},
+        ),
         returnsNormally,
       );
     });

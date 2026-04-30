@@ -4,51 +4,49 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:aq_schema/aq_schema.dart';
+import 'package:aq_schema/tools.dart';
 import 'package:aq_schema/graph/nodes/base/i_workflow_node.dart';
 import 'package:aq_schema/graph/nodes/base/composite_node.dart';
 import 'package:aq_schema/graph/nodes/base/interactive_node.dart';
 import '../../interfaces/i_run_repository.dart';
 import '../../interfaces/i_graph_repository.dart';
-import '../registry/node_type_registry.dart';
 import '../engine/condition_evaluator.dart';
 import '../monitoring/metrics.dart';
-
-/// WorkflowRunner с полиморфными узлами
+/// WorkflowRunner — исполнитель WorkflowGraph.
 ///
 /// Поддерживает:
 /// - Автоматические узлы (execute без пауз)
 /// - Интерактивные узлы (suspend/resume)
 /// - Композитные узлы (SubGraph, RunInstruction)
-class PolymorphicWorkflowRunner {
+class WorkflowRunner {
   final String runId;
   final String projectId;
   final String projectPath;
-  final WorkflowGraph graph;
+  final TypedWorkflowGraph graph;
   final IRunRepository _repo;
+  // Будут использоваться при реализации выполнения узлов (LLM, FileRead и т.д.)
+  // ignore: unused_field
   final IGraphRepository _graphRepo;
-  final AQToolService _tools;
-  final NodeTypeRegistry _nodeRegistry;
+  // ignore: unused_field
+  final IToolService _tools;
 
   final List<String> _logs = [];
   final Set<String> _visitedEdges = {};
 
   /// Отслеживание прибытия рёбер к узлам для joinStrategy.waitAll
-  /// Формат: { nodeId: Set<edgeId> }
   final Map<String, Set<String>> _arrivedEdges = {};
 
-  PolymorphicWorkflowRunner({
+  WorkflowRunner({
     required this.runId,
     required this.projectId,
     required this.projectPath,
     required this.graph,
     required IRunRepository repo,
     required IGraphRepository graphRepo,
-    required AQToolService tools,
-    NodeTypeRegistry? nodeRegistry,
+    required IToolService tools,
   })  : _repo = repo,
         _graphRepo = graphRepo,
-        _tools = tools,
-        _nodeRegistry = nodeRegistry ?? buildDefaultRegistry();
+        _tools = tools;
 
   Future<void> start({
     String? startNodeId,
@@ -56,9 +54,15 @@ class PolymorphicWorkflowRunner {
     Map<String, dynamic>? injectedVariables,
   }) async {
     // Метрики: запуск начат
-    GraphEngineMetrics.runStartedCounter.labels([projectId, graph.id]).inc();
-    GraphEngineMetrics.activeRunsGauge.inc();
-    final startTime = DateTime.now();
+    GraphEngineMetrics.runStarted.inc(attributes: {
+      'project_id': projectId,
+      'blueprint_id': graph.id,
+    });
+    GraphEngineMetrics.activeRuns.inc();
+    final runTimer = GraphEngineMetrics.runDuration.start(attributes: {
+      'project_id': projectId,
+      'blueprint_id': graph.id,
+    });
 
     _visitedEdges.clear();
 
@@ -140,9 +144,8 @@ class PolymorphicWorkflowRunner {
           return;
         }
 
-        _log('✅ Resuming from node: ${resumeNode.id} (type: ${resumeNode.type})');
-        final polymorphicNode = _nodeRegistry.workflowFromJson(resumeNode.toJson());
-        await _processNode(polymorphicNode, 0, context);
+        _log('✅ Resuming from node: ${resumeNode.id} (type: ${resumeNode.nodeType})');
+        await _processNode(resumeNode, 0, context);
       } else {
         // Новый запуск - выполнить все стартовые узлы
         if (startNodes.isEmpty) {
@@ -152,19 +155,15 @@ class PolymorphicWorkflowRunner {
         }
 
         if (startNodes.length == 1) {
-          // Один стартовый узел - выполнить последовательно
           final node = startNodes.first;
-          _log('✅ Starting from node: ${node.id} (type: ${node.type})');
-          final polymorphicNode = _nodeRegistry.workflowFromJson(node.toJson());
-          await _processNode(polymorphicNode, 0, context);
+          _log('✅ Starting from node: ${node.id} (type: ${node.nodeType})');
+          await _processNode(node, 0, context);
         } else {
-          // Несколько стартовых узлов - выполнить параллельно
           _log('⚡ Starting ${startNodes.length} nodes in parallel');
           await Future.wait(
             startNodes.map((node) async {
-              _log('✅ Starting node: ${node.id} (type: ${node.type})');
-              final polymorphicNode = _nodeRegistry.workflowFromJson(node.toJson());
-              await _processNode(polymorphicNode, 0, context);
+              _log('✅ Starting node: ${node.id} (type: ${node.nodeType})');
+              await _processNode(node, 0, context);
             }),
           );
         }
@@ -174,10 +173,12 @@ class PolymorphicWorkflowRunner {
       await _repo.updateRunLog(runId, _logs, status: 'completed');
 
       // Метрики: успешное завершение
-      final duration = DateTime.now().difference(startTime).inMilliseconds / 1000.0;
-      GraphEngineMetrics.runDurationHistogram.labels([projectId, graph.id]).observe(duration);
-      GraphEngineMetrics.runCompletedCounter.labels([projectId, graph.id]).inc();
-      GraphEngineMetrics.activeRunsGauge.dec();
+      runTimer.stop(attributes: {'status': 'completed'});
+      GraphEngineMetrics.runCompleted.inc(attributes: {
+        'project_id': projectId,
+        'blueprint_id': graph.id,
+      });
+      GraphEngineMetrics.activeRuns.dec();
     } catch (e, stack) {
       _log('❌ CRITICAL ERROR: $e');
       _log('Stack trace: $stack');
@@ -185,12 +186,13 @@ class PolymorphicWorkflowRunner {
       await _repo.updateRunLog(runId, _logs, status: 'failed');
 
       // Метрики: ошибка
-      final duration = DateTime.now().difference(startTime).inMilliseconds / 1000.0;
-      GraphEngineMetrics.runDurationHistogram.labels([projectId, graph.id]).observe(duration);
-      GraphEngineMetrics.runFailedCounter
-          .labels([projectId, graph.id, e.runtimeType.toString()])
-          .inc();
-      GraphEngineMetrics.activeRunsGauge.dec();
+      runTimer.stop(attributes: {'status': 'failed'});
+      GraphEngineMetrics.runFailed.inc(attributes: {
+        'project_id': projectId,
+        'blueprint_id': graph.id,
+        'error_type': e.runtimeType.toString(),
+      });
+      GraphEngineMetrics.activeRuns.dec();
     }
   }
 
@@ -202,10 +204,14 @@ class PolymorphicWorkflowRunner {
     _log('▶ Executing: ${node.nodeType} [${node.id.substring(0, 4)}]');
 
     // Метрики: начало выполнения узла
-    final nodeStartTime = DateTime.now();
-    GraphEngineMetrics.nodeExecutionCounter
-        .labels([node.nodeType, projectId])
-        .inc();
+    final nodeTimer = GraphEngineMetrics.nodeDuration.start(attributes: {
+      'node_type': node.nodeType,
+      'project_id': projectId,
+    });
+    GraphEngineMetrics.nodeExecuted.inc(attributes: {
+      'node_type': node.nodeType,
+      'project_id': projectId,
+    });
 
     dynamic result;
     bool success = true;
@@ -215,10 +221,7 @@ class PolymorphicWorkflowRunner {
       result = await _executeNodeWithRetry(node, context);
 
       // Метрики: узел выполнен успешно
-      final nodeDuration = DateTime.now().difference(nodeStartTime).inMilliseconds / 1000.0;
-      GraphEngineMetrics.nodeExecutionHistogram
-          .labels([node.nodeType, projectId])
-          .observe(nodeDuration);
+      nodeTimer.stop(attributes: {'status': 'ok'});
 
       // Обработка CompositeNode (SubGraph, RunInstruction)
       if (node is CompositeNode && result is RunContext) {
@@ -232,7 +235,10 @@ class PolymorphicWorkflowRunner {
       _log('⏸️ Execution suspended: ${e.reason}');
 
       // Метрика suspended
-      GraphEngineMetrics.runSuspendedCounter.labels([projectId, graph.id]).inc();
+      GraphEngineMetrics.runSuspended.inc(attributes: {
+        'project_id': projectId,
+        'blueprint_id': graph.id,
+      });
 
       // Сохранить состояние для resume
       final snapshotPayload = {
@@ -389,8 +395,8 @@ class PolymorphicWorkflowRunner {
 
     _log('→ Transmitting to [$nextBranchName]...');
 
-    // Конвертировать в полиморфный узел
-    final nextNode = _nodeRegistry.workflowFromJson(nextNodeData.toJson());
+    // Узел уже IWorkflowNode — конвертация не нужна
+    final nextNode = nextNodeData;
 
     // Отметить прибытие ребра к целевому узлу
     _arrivedEdges.putIfAbsent(edge.targetId, () => {}).add(edge.id);
@@ -415,7 +421,7 @@ class PolymorphicWorkflowRunner {
       _log('✅ All ${incomingEdges.length} edges arrived at [${edge.targetId.substring(0, 4)}]');
     }
 
-    await _processNode(nextNode, depth + 1, nextContext as RunContext);
+    await _processNode(nextNode, depth + 1, nextContext);
   }
 
   /// Выполнить узел с retry механизмом
@@ -430,7 +436,7 @@ class PolymorphicWorkflowRunner {
     while (true) {
       try {
         // Попытка выполнения
-        return await node.execute(context, _tools);
+        return await node.execute(context);
       } catch (e) {
         attempt++;
 
@@ -450,9 +456,11 @@ class PolymorphicWorkflowRunner {
         _log('🔄 Retrying in ${delayMs}ms... (${maxRetries - attempt} attempts left)');
 
         // Метрика retry
-        GraphEngineMetrics.nodeRetryCounter
-            .labels([node.nodeType, projectId, attempt.toString()])
-            .inc();
+        GraphEngineMetrics.nodeRetried.inc(attributes: {
+          'node_type': node.nodeType,
+          'project_id': projectId,
+          'attempt': attempt.toString(),
+        });
 
         // Ждём перед следующей попыткой
         await Future.delayed(Duration(milliseconds: delayMs));

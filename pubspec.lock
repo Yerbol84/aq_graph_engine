@@ -24,13 +24,6 @@ packages:
       relative: true
     source: path
     version: "1.0.0"
-  aq_tool_service:
-    dependency: "direct main"
-    description:
-      path: "../aq_tool_service"
-      relative: true
-    source: path
-    version: "0.2.0"
   args:
     dependency: transitive
     description:
@@ -55,22 +48,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.2"
-  buffer:
-    dependency: transitive
-    description:
-      name: buffer
-      sha256: "389da2ec2c16283c8787e0adaede82b1842102f8c8aae2f49003a766c5c6b3d1"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.2.3"
-  charcode:
-    dependency: transitive
-    description:
-      name: charcode
-      sha256: fb0f1107cac15a5ea6ef0a6ef71a807b9e4267c713bb93e00e92d737cc8dbd8a
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.4.0"
   cli_config:
     dependency: transitive
     description:
@@ -111,13 +88,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.7"
-  dart_vault:
-    dependency: "direct main"
-    description:
-      path: "../dart_vault_package"
-      relative: true
-    source: path
-    version: "0.4.0"
   file:
     dependency: transitive
     description:
@@ -262,22 +232,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.5.2"
-  postgres:
-    dependency: transitive
-    description:
-      name: postgres
-      sha256: fefbbfe749c6130e5096588b9c4459173684c695952cd7636ab19be76f255469
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.5.9"
-  prometheus_client:
-    dependency: "direct main"
-    description:
-      name: prometheus_client
-      sha256: "994b731e5b35f4666f50e804bc88a32f55ddcbc6dd2db707f4b8b3374c38f115"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.0.0+1"
   pub_semver:
     dependency: transitive
     description:
@@ -471,7 +425,7 @@ packages:
     source: hosted
     version: "1.0.1"
   web_socket_channel:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: web_socket_channel
       sha256: d645757fb0f4773d602444000a8131ff5d48c9e47adfe9772652dd1a4f2d45c8

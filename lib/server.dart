@@ -18,7 +18,7 @@ export 'src/server/engine/engine_execution_context.dart';
 export 'src/server/engine/condition_evaluator.dart';
 
 // Runners
-export 'src/server/runners/polymorphic_workflow_runner.dart';
+export 'src/server/runners/workflow_runner.dart';
 export 'src/server/runners/instruction_runner.dart';
 export 'src/server/runners/prompt_runner.dart';
 

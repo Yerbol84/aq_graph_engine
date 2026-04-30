@@ -35,7 +35,8 @@ void main() {
           expect(request.headers['Content-Type'], 'application/json');
 
           final body = jsonDecode(request.body) as Map<String, dynamic>;
-          expect(body['blueprintId'], 'bp-1');
+          // Клиент отправляет blueprintId как workflowName
+          expect(body['workflowName'], 'bp-1');
           expect(body['projectId'], 'proj-1');
 
           return http.Response(

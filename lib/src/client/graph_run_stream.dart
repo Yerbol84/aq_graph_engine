@@ -31,12 +31,10 @@ class GraphRunStream {
 
   /// Stream событий
   Stream<GraphRunEvent> get events {
-    if (_controller == null) {
-      _controller = StreamController<GraphRunEvent>(
-        onListen: _onListen,
-        onCancel: _onCancel,
-      );
-    }
+    _controller ??= StreamController<GraphRunEvent>(
+      onListen: _onListen,
+      onCancel: _onCancel,
+    );
     return _controller!.stream;
   }
 
