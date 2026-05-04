@@ -1,113 +1,44 @@
 # AQ Graph Engine — Документация
 
-Добро пожаловать в документацию графового движка AQ!
+**Статус:** В активной разработке  
+**Последнее обновление:** 2026-05-02
 
 ---
 
-## 📚 Быстрый старт
+## Читать в таком порядке
 
-Для начала работы рекомендуем прочитать в следующем порядке:
-
-1. **[OVERVIEW.md](OVERVIEW.md)** — общий обзор системы, философия "Граф как Закон"
-2. **[CLIENT_USAGE.md](CLIENT_USAGE.md)** — руководство по использованию GraphEngineClient
-3. **[Краткое резюме по типам графов](general/Краткое%20резюме%20по%20типам%20графов.md)** — когда какой тип графа использовать
-
----
-
-## 📖 Техническая документация
-
-### Архитектура
-
-- **[CLIENT_SERVER_ARCHITECTURE.md](CLIENT_SERVER_ARCHITECTURE.md)** — принцип "Тонкого клиента", трёхслойная архитектура
-- **[API_KEYS.md](API_KEYS.md)** — двойная авторизация (JWT + API keys)
-
-### Типы графов
-
-- **[WORKFLOW_GRAPH.md](WORKFLOW_GRAPH.md)** — WorkflowGraph: узлы, рёбра, параллельное выполнение, suspend/resume
-- **[INSTRUCTION_GRAPH.md](INSTRUCTION_GRAPH.md)** — InstructionGraph: контракт, валидация, циклы
-
-### Руководства
-
-- **[GRAPH_ENGINE_GUIDE.md](GRAPH_ENGINE_GUIDE.md)** — полиморфная архитектура узлов, использование Runners
-- **[CLIENT_USAGE.md](CLIENT_USAGE.md)** — API клиента, примеры, error handling, best practices
+1. [OVERVIEW.md](OVERVIEW.md) — что это, три типа графов, что работает сейчас
+2. [ARCHITECTURE.md](ARCHITECTURE.md) — внутреннее устройство, структура файлов, поток выполнения
+3. [CLIENT_SERVER_ARCHITECTURE.md](CLIENT_SERVER_ARCHITECTURE.md) — принцип тонкого клиента, режимы работы
+4. [CLIENT_USAGE.md](CLIENT_USAGE.md) — API GraphEngineClient, примеры
+5. [API_KEYS.md](API_KEYS.md) — авторизация
 
 ---
 
-## 🎯 Стратегия и бизнес-логика
+## Текущее состояние
 
-Документы в папке **[general/](general/)**:
-
-- **[PACKAGE_STRATEGY.md](general/PACKAGE_STRATEGY.md)** — полная стратегия пакета (философия, архитектура, план развития)
-- **[AQ Graph Engine — Обзорный документ](general/AQ%20Graph%20Engine%20—%20Обзорный%20документ:%20бизнес-логика,%20архитектура%20и%20production-готовность.md)** — бизнес-логика и production-готовность
-- **[Краткое резюме по типам графов](general/Краткое%20резюме%20по%20типам%20графов.md)** — сравнительная таблица типов графов
-
----
-
-## 📋 План развития
-
-- **[AQ Graph Engine — План полной production-готовности](AQ%20Graph%20Engine%20—%20План%20полной%20production-готовности.md)** — целевая архитектура, фазированный план (7 недель)
-
----
-
-## 📦 Архив
-
-Исторические документы (отчёты о прогрессе, выполненные планы) находятся в папке **[archive/](archive/)**.
+| Компонент | Статус |
+|-----------|--------|
+| TypedWorkflowGraph + WorkflowRunner | ✅ Работает |
+| InstructionRunner | ✅ Работает (через deprecated InstructionGraph) |
+| PromptRunner | ✅ Работает (через deprecated PromptGraph) |
+| LocalEngineTransport | ✅ Работает |
+| HttpEngineTransport | ✅ Работает |
+| GraphEngineClient | ✅ Работает |
+| TypedInstructionGraph | 🔄 Создан, миграция runner — следующая сессия |
+| TypedPromptGraph | 🔄 Создан, миграция runner — следующая сессия |
+| Distributed lock | ❌ Заглушка (single-worker only) |
 
 ---
 
-## 🏗️ Структура документации
+## Аудит и tech debt
 
-```
-docs/
-├── README.md                          ← Вы здесь
-│
-├── general/                           ← Стратегия и бизнес-логика
-│   ├── PACKAGE_STRATEGY.md
-│   ├── AQ Graph Engine — Обзорный документ.md
-│   └── Краткое резюме по типам графов.md
-│
-├── archive/                           ← Исторические отчёты
-│   ├── IMPLEMENTATION_PLAN.md
-│   ├── CODE_AUDIT_REPORT.md
-│   ├── COMPLETION_REPORT.md
-│   └── ...
-│
-└── [Техническая документация]         ← Актуальные технические документы
-    ├── OVERVIEW.md
-    ├── WORKFLOW_GRAPH.md
-    ├── INSTRUCTION_GRAPH.md
-    ├── GRAPH_ENGINE_GUIDE.md
-    ├── CLIENT_USAGE.md
-    ├── CLIENT_SERVER_ARCHITECTURE.md
-    └── API_KEYS.md
-```
+- [audit_2026_05_02/AUDIT_REPORT.md](audit_2026_05_02/AUDIT_REPORT.md) — найденные проблемы
+- [audit_2026_05_02/STATUS.md](audit_2026_05_02/STATUS.md) — что решено, что осталось
 
 ---
 
-## 🔍 Поиск информации
+## Архив
 
-**Хотите узнать:**
-
-- Как работает система? → [OVERVIEW.md](OVERVIEW.md)
-- Как использовать клиент? → [CLIENT_USAGE.md](CLIENT_USAGE.md)
-- Какой тип графа выбрать? → [Краткое резюме](general/Краткое%20резюме%20по%20типам%20графов.md)
-- Как устроена архитектура? → [CLIENT_SERVER_ARCHITECTURE.md](CLIENT_SERVER_ARCHITECTURE.md)
-- Как работает авторизация? → [API_KEYS.md](API_KEYS.md)
-- Что такое WorkflowGraph? → [WORKFLOW_GRAPH.md](WORKFLOW_GRAPH.md)
-- Что такое InstructionGraph? → [INSTRUCTION_GRAPH.md](INSTRUCTION_GRAPH.md)
-- Полная стратегия пакета? → [PACKAGE_STRATEGY.md](general/PACKAGE_STRATEGY.md)
-
----
-
-## 📝 Обновление документации
-
-При добавлении новых документов:
-
-- **Техническая документация** → корень `docs/`
-- **Стратегия/бизнес-логика** → `docs/general/`
-- **Отчёты о прогрессе** → `docs/archive/`
-
----
-
-**Версия документации:** 2026-04-11
-**Статус пакета:** Production Ready (100%)
+Исторические документы — в [archive/](archive/).
+Там же: старые описания `WorkflowGraph`, `InstructionGraph`, `PromptGraph` (deprecated типы).

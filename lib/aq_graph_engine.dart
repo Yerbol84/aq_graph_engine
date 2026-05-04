@@ -5,9 +5,9 @@
 
 library aq_graph_engine;
 
-// Интерфейсы для адаптеров (shared)
-export 'src/interfaces/i_run_repository.dart';
-export 'src/interfaces/i_graph_repository.dart';
+// Интерфейсы репозиториев (живут в aq_schema, реэкспортируем для удобства)
+export 'package:aq_schema/graph/engine/i_run_repository.dart';
+export 'package:aq_schema/graph/engine/i_graph_repository.dart';
 
 // Клиентский транспорт
 export 'src/transport/http_engine_transport.dart';

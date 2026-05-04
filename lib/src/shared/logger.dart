@@ -27,3 +27,7 @@ String _getEmojiForLevel(Level level) {
   if (level >= Level.INFO) return 'ℹ️';
   return '🔍';
 }
+
+/// Укоротить ID для логов (первые [len] символов).
+String shortId(String id, [int len = 6]) =>
+    id.length > len ? id.substring(0, len) : id;

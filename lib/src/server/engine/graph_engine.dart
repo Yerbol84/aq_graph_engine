@@ -4,11 +4,14 @@
 import 'package:aq_schema/aq_schema.dart';
 import 'package:aq_schema/tools.dart';
 import 'package:aq_schema/metrics.dart';
-import '../../interfaces/i_run_repository.dart';
-import '../../interfaces/i_graph_repository.dart';
+import 'package:aq_schema/graph/engine/i_run_repository.dart';
+import '../../shared/logger.dart';
+import 'package:aq_schema/graph/engine/i_graph_repository.dart';
 import '../../transport/local_engine_transport.dart';
 import '../../transport/http_engine_transport.dart';
 import '../monitoring/metrics.dart' show GraphEngineMetrics;
+import '../storage/data_layer_run_repository.dart';
+import '../storage/data_layer_graph_repository.dart';
 
 /// Режим работы GraphEngine
 enum GraphEngineMode {
@@ -95,6 +98,23 @@ class GraphEngine {
     }
   }
 
+  /// Фабричный метод для серверного режима через IDataLayer.
+  ///
+  /// Использует DataLayerRunRepository и DataLayerGraphRepository —
+  /// реализации через IDataLayer.instance из aq_schema.
+  /// IDataLayer должен быть инициализирован до вызова этого метода.
+  factory GraphEngine.withDataLayer({
+    required IToolService tools,
+    AQAuthClient? auth,
+  }) {
+    return GraphEngine(
+      tools: tools,
+      runRepo: DataLayerRunRepository(),
+      graphRepo: DataLayerGraphRepository(),
+      auth: auth,
+    );
+  }
+
   /// Запустить граф. Возвращает stream событий.
   Stream<GraphRunEvent> run(GraphRunRequest request) => _transport.run(request);
 
@@ -127,9 +147,9 @@ class _AutoFallbackTransport implements IEngineTransport {
       _lastCheck = now;
       _primaryAvailable = await primary.isAvailable();
       if (_primaryAvailable) {
-        print('✅ Remote server available, using HttpEngineTransport');
+        graphEngineServerLogger.info('Remote server available, using HttpEngineTransport');
       } else {
-        print('⚠️ Remote server unavailable, falling back to LocalEngineTransport');
+        graphEngineServerLogger.warning('Remote server unavailable, falling back to LocalEngineTransport');
       }
     }
     return _primaryAvailable ? primary : fallback;

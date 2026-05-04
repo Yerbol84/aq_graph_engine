@@ -1,300 +1,172 @@
 # AQ Graph Engine — Обзор
 
-## 📋 Содержание
-
-1. [Введение](#введение)
-2. [Философия "Граф как Закон"](#философия-граф-как-закон)
-3. [Архитектура движка](#архитектура-движка)
-4. [Три типа графов](#три-типа-графов)
-5. [Жизненный цикл выполнения](#жизненный-цикл-выполнения)
-6. [Использование](#использование)
+**Последнее обновление:** 2026-05-02
 
 ---
 
-## Введение
+## Что это
 
-**AQ Graph Engine** — это pure Dart runtime для выполнения графов трёх типов:
-- **WorkflowGraph** — основной сценарий выполнения (pipeline агента)
-- **InstructionGraph** — переиспользуемая инструкция с контрактом
-- **PromptGraph** — шаблон промпта для LLM
+`aq_graph_engine` — Dart runtime для выполнения графов трёх типов:
 
-Движок может работать:
-- **Локально** (desktop приложение) — через `LocalEngineTransport`
-- **На сервере** (web service) — через `HttpEngineTransport` (планируется)
-- **В воркере** (background job) — через `GraphWorker`
+- **WorkflowGraph** — сценарий выполнения агента (pipeline)
+- **InstructionGraph** — переиспользуемая логика с контрактом входов/выходов
+- **PromptGraph** — шаблон промпта для LLM с подстановкой переменных
 
----
-
-## Философия "Граф как Закон"
-
-### Ключевая идея
-
-В AQ Studio **любая активность — это выполнение графа**:
-- Написание кода → Workflow граф
-- Создание спецификации → Workflow граф
-- Генерация промпта → Prompt граф
-- Анализ кода → Instruction граф
-
-### Преимущества подхода
-
-1. **Унификация** — один механизм для всех процессов
-2. **Версионирование** — каждый граф автоматически версионируется
-3. **Визуализация** — логика видна визуально
-4. **Переносимость** — экспорт/импорт через JSON
-5. **Композиция** — графы вызывают другие графы
-6. **Приостановка** — можно остановить и продолжить позже
-
----
-
-## Архитектура движка
-
-### Компоненты
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        GraphEngine                          │
-│  (единая точка входа для выполнения любых графов)           │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ├─── ToolRegistry (реестр Skills)
-                              ├─── IRunRepository (хранилище запусков)
-                              ├─── IGraphRepository (хранилище графов)
-                              └─── IEngineTransport (транспорт)
-                                          │
-                    ┌─────────────────────┼─────────────────────┐
-                    │                     │                     │
-          LocalEngineTransport   HttpEngineTransport   CustomTransport
-          (локальное выполнение)  (удалённый сервер)   (ваша реализация)
-                    │
-        ┌───────────┼───────────┐
-        │           │           │
-  WorkflowRunner  InstructionRunner  PromptRunner
-  (выполняет      (выполняет         (компилирует
-   Workflow)       Instruction)       Prompt)
-```
-
-### Слои абстракции
-
-1. **GraphEngine** — фасад, скрывает детали
-2. **IEngineTransport** — абстракция транспорта (локальный/удалённый)
-3. **Runners** — исполнители конкретных типов графов
-4. **Repositories** — абстракция хранилища данных
+Движок работает:
+- **Локально** (desktop) — через `LocalEngineTransport`
+- **Удалённо** (web service) — через `HttpEngineTransport`
+- **В воркере** (background job) — через `GraphWorker` в `aq_graph_worker`
 
 ---
 
 ## Три типа графов
 
-### 1. WorkflowGraph — Основной сценарий
+### TypedWorkflowGraph ✅ Актуальный
 
-**Назначение:** Автоматизация процесса от начала до конца.
+Основной сценарий. Узлы — полиморфные `IWorkflowNode`.
 
 **Узлы:**
 - `llmAction` — запрос к LLM
-- `fileRead` / `fileWrite` — работа с файлами
-- `userInput` — запрос данных у пользователя
-- `manualReview` — ожидание подтверждения
-- `fileUpload` — загрузка файла
-- `coCreationChat` — совместное создание с AI
-- `runInstruction` — вызов Instruction графа
+- `fileRead` / `fileWrite` — файловая система
+- `userInput` / `manualReview` / `fileUpload` / `coCreationChat` — интерактивные (suspend/resume)
+- `runInstruction` — вызов InstructionGraph
+- `subGraph` — вложенный Workflow
 - `gitCommit` — коммит в Git
 
-**Рёбра:**
-- `onSuccess` — переход при успехе
-- `onError` — переход при ошибке
-- `conditional` — условный переход
+**Рёбра:** `onSuccess`, `onError`, `conditional`
 
-**Особенности:**
-- Поддержка параллельных веток (branches)
-- Приостановка для UI ввода (`suspended`)
-- Сохранение состояния после каждого шага
-
-**Пример:**
-```
-[fileRead] → [llmAction] → [userInput] → [fileWrite] → [gitCommit]
-```
+**Особенности:** параллельные ветки, suspend/resume, сохранение состояния в БД.
 
 ---
 
-### 2. InstructionGraph — Переиспользуемая инструкция
+### TypedInstructionGraph 🔄 В процессе миграции
 
-**Назначение:** Атомарная бизнес-логика с контрактом входов/выходов.
+Атомарная бизнес-логика. Узлы — полиморфные `IInstructionNode`.
 
 **Узлы:**
-- `systemAction` — вызов Skill (LLM, файлы, векторный поиск)
-- `validationCheck` — проверка условия (ветвление)
-- `stepDescription` — описательный шаг
-- `userInputRequest` — запрос ввода
+- `condition` — ветвление по условию
+- `llmQuery` — запрос к LLM
+- `toolCall` — вызов инструмента из ToolRegistry
+- `transform` — преобразование данных
 
-**Контракт:**
-```json
-{
-  "inputs": [
-    {"name": "source_code", "type": "string", "required": true}
-  ],
-  "outputs": [
-    {"name": "analysis", "type": "string"}
-  ]
-}
-```
+**Особенности:** циклы разрешены (защита: maxSteps=50), нет UI узлов, контракт входов/выходов.
 
-**Особенности:**
-- Валидация контракта через JSON Schema
-- Может содержать циклы (защита: maxSteps = 20)
-- Можно вызывать из Workflow как функцию
-
-**Пример:**
-```
-Instruction "Code Analyzer":
-  Вход: source_code
-  [systemAction: llm_ask] → [validationCheck: результат не пустой?]
-    ├─ true → [Возврат analysis]
-    └─ false → [Ошибка]
-```
+> **Статус:** `TypedInstructionGraph` создан в `aq_schema`. `InstructionRunner` пока работает
+> со старым `InstructionGraph` (deprecated) — миграция в следующей сессии.
 
 ---
 
-### 3. PromptGraph — Шаблон промпта
+### TypedPromptGraph 🔄 В процессе миграции
 
-**Назначение:** Конструирование промптов для LLM с переменными.
+Шаблон промпта. Узлы — полиморфные `IPromptNode`.
 
 **Узлы:**
-- `textBlock` — блок текста с `{{переменными}}`
-- `variable` — объявление переменной
-- `fileContext` — контекст из файла
+- `textBlock` — текст с `{{переменными}}`
+- `variableInsert` — вставка переменной с prefix/suffix
+- `conditionalBlock` — условный блок текста
 
-**Компиляция:**
-```
-Граф: [textBlock: "Проанализируй: {{source_code}}"]
-Контекст: {source_code: "function main() {}"}
-Результат: "Проанализируй: function main() {}"
-```
+**Особенности:** компилируется в строку, переменные из RunContext.
 
-**Особенности:**
-- Промпты версионируются как графы
-- Можно переиспользовать в разных Workflow
-- Подстановка переменных из RunContext
+> **Статус:** `TypedPromptGraph` создан в `aq_schema`. `PromptRunner` пока работает
+> со старым `PromptGraph` (deprecated) — миграция в следующей сессии.
 
 ---
 
-## Жизненный цикл выполнения
-
-### 1. Создание запроса
-
-```dart
-final request = GraphRunRequest(
-  runId: uuid,
-  blueprintId: workflowId,
-  projectId: projectId,
-  projectPath: '/path/to/project',
-);
-```
-
-### 2. Запуск через движок
-
-```dart
-final engine = GraphEngine(
-  tools: toolRegistry,
-  runRepo: runRepository,
-  graphRepo: graphRepository,
-);
-
-Stream<GraphRunEvent> events = engine.run(request);
-```
-
-### 3. Обработка событий
-
-```dart
-await for (final event in events) {
-  switch (event.type) {
-    case GraphRunEventType.log:
-      print(event.message);
-    case GraphRunEventType.statusChanged:
-      print('Status: ${event.newStatus}');
-    case GraphRunEventType.userInputRequired:
-      // Показать UI форму
-      final input = await showDialog(...);
-      await engine.resumeWithInput(UserInputResponse(
-        runId: event.runId,
-        data: input,
-      ));
-    case GraphRunEventType.completed:
-      print('Done!');
-    case GraphRunEventType.error:
-      print('Error: ${event.errorMessage}');
-  }
-}
-```
-
-### 4. Статусы выполнения
+## Жизненный цикл run
 
 ```
-pending → running → suspended → running → completed
+pending → running → completed
                  ↘ failed
+                 ↘ suspended → running → ...
 ```
 
-- `pending` — в очереди
+- `pending` — создан, ещё не запущен
 - `running` — выполняется
-- `suspended` — ждёт ввода пользователя
+- `suspended` — ждёт ввода пользователя (только WorkflowGraph)
 - `completed` — успешно завершён
 - `failed` — ошибка
 
 ---
 
-## Использование
+## Как запустить
 
-### Локальное выполнение (desktop)
+### Локально (desktop)
+
+```dart
+import 'package:aq_graph_engine/server.dart';
+
+final engine = GraphEngine(
+  tools: buildToolRegistry(),
+  runRepo: myRunRepository,    // implements IRunRepository
+  graphRepo: myGraphRepository, // implements IGraphRepository
+);
+
+final events = engine.run(GraphRunRequest(
+  runId: uuid,
+  blueprintId: workflowId,
+  projectId: projectId,
+  projectPath: '/path/to/project',
+));
+
+await for (final event in events) {
+  // GraphRunEvent: log, statusChanged, completed, error, userInputRequired
+}
+```
+
+### Через HTTP клиент
 
 ```dart
 import 'package:aq_graph_engine/aq_graph_engine.dart';
 
-final engine = GraphEngine(
-  tools: buildToolRegistry(),
-  runRepo: LocalRunRepository(),
-  graphRepo: LocalGraphRepository(),
-  // transport не указан → используется LocalEngineTransport
-);
-
-final events = engine.run(request);
-```
-
-### Удалённое выполнение (web service)
-
-```dart
-final engine = GraphEngine(
-  tools: buildToolRegistry(),
-  runRepo: RemoteRunRepository(dataServiceUrl),
-  graphRepo: RemoteGraphRepository(dataServiceUrl),
-  transport: HttpEngineTransport(workerServiceUrl),
-);
-
-final events = engine.run(request);
-```
-
-### Фоновое выполнение (worker)
-
-```dart
-// Клиент отправляет задание в очередь
-await queue.enqueue(WorkerJobImpl(
-  jobId: uuid,
-  tool: 'run_graph',
-  payload: request.toJson(),
-));
-
-// Воркер выполняет
-final worker = GraphWorker(config: workerConfig);
-await worker.start();
+final client = GraphEngineClient(baseUrl: 'http://localhost:8080');
+final response = await client.startRun(request);
+final stream = client.connectToRun(response.runId);
 ```
 
 ---
 
-## Следующие шаги
+## Ключевые контракты (в aq_schema)
 
-Читайте подробную документацию по каждому типу графа:
-- [WorkflowGraph](./WORKFLOW_GRAPH.md)
-- [InstructionGraph](./INSTRUCTION_GRAPH.md)
-- [PromptGraph](./PROMPT_GRAPH.md)
+| Интерфейс | Ответственность |
+|-----------|----------------|
+| `IRunRepository` | Lifecycle run: статус, логи, suspend/resume → БД |
+| `IGraphRepository` | Загрузка графов по ID |
+| `IRunStateManager` | Кэш RunContext между узлами → память |
+| `IEngineTransport` | Абстракция транспорта (local/http) |
 
-Документация по разработке:
-- [Архитектура движка](./ARCHITECTURE.md)
-- [Создание кастомных узлов](./CUSTOM_NODES.md)
-- [Разработка воркеров](./WORKERS.md)
+---
+
+## Что сейчас работает
+
+- ✅ `TypedWorkflowGraph` — полная поддержка
+- ✅ Параллельные ветки + join стратегии
+- ✅ Suspend/resume для интерактивных узлов
+- ✅ `InstructionRunner` — работает (через старый `InstructionGraph`)
+- ✅ `PromptRunner` — работает (через старый `PromptGraph`)
+- ✅ `LocalEngineTransport` — локальное выполнение
+- ✅ `HttpEngineTransport` — удалённое выполнение (клиентская сторона)
+- ✅ `GraphEngineClient` — HTTP клиент
+- ✅ DLQ (Dead Letter Queue) для failed runs
+- ✅ Защита от циклов (счётчик итераций)
+
+## Что в процессе
+
+- 🔄 Миграция `InstructionRunner` на `TypedInstructionGraph`
+- 🔄 Миграция `PromptRunner` на `TypedPromptGraph`
+- 🔄 Удаление старых фабрик (`InstructionNodeFactory`, `PromptNodeFactory`, `WorkflowNodeFactory`)
+
+## Что не реализовано (tech debt)
+
+- ❌ `projectPath` в `WorkflowRun` — временный костыль через `graphSnapshot`
+- ❌ Distributed lock (`tryAcquireLock` всегда `true`) — single-worker only
+- ❌ True append-only логи — сейчас read-modify-write
+
+---
+
+## Подробнее
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) — внутреннее устройство движка
+- [CLIENT_USAGE.md](CLIENT_USAGE.md) — API клиента
+- [CLIENT_SERVER_ARCHITECTURE.md](CLIENT_SERVER_ARCHITECTURE.md) — принцип тонкого клиента
+- [API_KEYS.md](API_KEYS.md) — авторизация
+- [audit_2026_05_02/STATUS.md](audit_2026_05_02/STATUS.md) — статус аудита и tech debt

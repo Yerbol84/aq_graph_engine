@@ -3,6 +3,8 @@
 
 import 'package:test/test.dart';
 import 'package:aq_graph_engine/server.dart';
+import 'package:aq_schema/aq_schema.dart';
+import 'package:aq_schema/graph/nodes/base/i_workflow_node.dart';
 import 'package:aq_schema/metrics.dart';
 
 void main() {
@@ -143,4 +145,83 @@ void main() {
       );
     });
   });
+
+  group('Cycle Detection', () {
+    test('бесконечный цикл прерывается по лимиту итераций', () async {
+      GraphEngineMetrics.init(NoopMetricsService.instance);
+
+      // Граф: n0 → n1 → n2 → n1 (цикл без условия выхода)
+      final graph = TypedWorkflowGraph(
+        id: 'cycle-graph',
+        tenantId: 'test',
+        ownerId: 'test',
+        name: 'Cycle Test',
+        nodes: {
+          'n0': _CounterNode('n0'),
+          'n1': _CounterNode('n1'),
+          'n2': _CounterNode('n2'),
+        },
+        edges: {
+          'e0': WorkflowEdge(id: 'e0', sourceId: 'n0', targetId: 'n1', type: WorkflowEdgeType.onSuccess),
+          'e1': WorkflowEdge(id: 'e1', sourceId: 'n1', targetId: 'n2', type: WorkflowEdgeType.onSuccess),
+          'e2': WorkflowEdge(id: 'e2', sourceId: 'n2', targetId: 'n1', type: WorkflowEdgeType.onSuccess),
+        },
+      );
+
+      final repo = _SimpleRunRepo();
+      final runner = WorkflowRunner(
+        runId: 'run-cycle',
+        projectId: 'test',
+        projectPath: '/tmp',
+        graph: graph,
+        repo: repo,
+      );
+
+      // Не должен зависнуть — прерывается по лимиту
+      await runner.start().timeout(const Duration(seconds: 10));
+
+      final n1 = graph.nodes['n1'] as _CounterNode;
+      // n1 выполнился ровно maxNodeIterations раз, потом цикл прерван
+      expect(n1.execCount, equals(100));
+    });
+  });
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+class _CounterNode implements IWorkflowNode {
+  @override final String id;
+  @override final String nodeType = 'counter';
+  int execCount = 0;
+
+  _CounterNode(this.id);
+
+  @override Future<dynamic> execute(RunContext context) async { execCount++; return null; }
+  @override IWorkflowNode copyWith() => this;
+  @override Map<String, dynamic> toJson() => {'id': id, 'type': nodeType};
+  @override List<String>? selectOutgoingEdges(edges, result) => null;
+  @override NodeJoinStrategy get joinStrategy => NodeJoinStrategy.firstCome;
+  @override Map<String, int>? get incomingEdgePriorities => null;
+  @override int get maxRetries => 0;
+  @override int get retryDelayMs => 0;
+  @override bool get useExponentialBackoff => false;
+  @override List<Type>? get retryableExceptions => null;
+}
+
+class _SimpleRunRepo extends IRunRepository {
+  final _store = <String, WorkflowRun>{};
+
+  @override Future<void> createRun(WorkflowRun run) async => _store[run.id] = run;
+  @override Future<void> updateRunLog(String runId, List<String> logs, {WorkflowRunStatus? status}) async {
+    final r = _store[runId]; if (r != null && status != null) _store[runId] = r.copyWith(status: status);
+  }
+  @override Future<void> suspendRun({required String runId, required String contextJson, required String nodeId}) async {}
+  @override Future<WorkflowRun?> getRun(String runId) async => _store[runId];
+  @override Future<bool> compareAndSetStatus({required String runId, required WorkflowRunStatus expectedStatus, required WorkflowRunStatus newStatus}) async => false;
+  @override Future<bool> tryAcquireLock({required String runId, required String workerId, required Duration ttl}) async => true;
+  @override Future<bool> releaseLock({required String runId, required String workerId}) async => true;
+  @override Future<void> moveToDLQ({required String runId, required String reason, required int failureCount, String? lastError}) async {}
+  @override Future<List<WorkflowRun>> getDLQJobs({int limit = 100, int offset = 0}) async => [];
+  @override Future<bool> retryFromDLQ({required String runId}) async => false;
+  @override Future<int> cleanupDLQ({required Duration olderThan}) async => 0;
 }

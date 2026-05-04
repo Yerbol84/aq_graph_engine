@@ -1,10 +1,11 @@
 // PromptRunner — компилятор PromptGraph в текстовый промпт
 
 import 'package:aq_schema/aq_schema.dart';
-import '../../interfaces/i_graph_repository.dart';
+import 'package:aq_schema/graph/engine/i_graph_repository.dart';
 import '../../shared/logger.dart';
 
 import 'package:aq_schema/graph/nodes/prompt/text_block_node.dart';
+import 'package:aq_schema/graph/nodes/base/i_prompt_node.dart';
 
 /// Runner для компиляции PromptGraph в текстовый промпт
 ///
@@ -154,7 +155,7 @@ class PromptRunner {
   }
 
   /// Создать IPromptNode из PromptNode
-  TextBlockNode? _createPromptNode(PromptNode node) {
+  IPromptNode? _createPromptNode(PromptNode node) {
     final data = node.data;
 
     switch (node.type) {

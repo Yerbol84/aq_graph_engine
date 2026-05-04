@@ -3,7 +3,7 @@
 import 'dart:async';
 import 'package:aq_schema/aq_schema.dart';
 import 'package:aq_schema/graph/nodes/base/i_instruction_node.dart';
-import '../../interfaces/i_graph_repository.dart';
+import 'package:aq_schema/graph/engine/i_graph_repository.dart';
 import '../factories/instruction_node_factory.dart';
 
 /// Исключение при превышении максимального количества шагов в инструкции

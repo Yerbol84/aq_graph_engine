@@ -6,6 +6,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../shared/logger.dart';
 import 'package:aq_schema/aq_schema.dart';
 
 /// HTTP транспорт для удалённого выполнения графов
@@ -83,8 +84,8 @@ class HttpEngineTransport implements IEngineTransport {
           return;
         }
 
-        print('⚠️ HttpEngineTransport: Attempt $attempt failed: $e');
-        print('   Retrying in ${delay.inSeconds}s...');
+        graphEngineClientLogger.warning('HttpEngineTransport: Attempt $attempt failed: $e');
+        graphEngineClientLogger.fine('Retrying in ${delay.inSeconds}s...');
 
         await Future.delayed(delay);
         delay *= 2; // Exponential backoff
@@ -206,7 +207,7 @@ class HttpEngineTransport implements IEngineTransport {
                 return;
               }
             } catch (e) {
-              print('⚠️ Failed to parse SSE event: $e');
+              graphEngineClientLogger.warning('Failed to parse SSE event: $e');
             }
           }
         }
@@ -349,7 +350,7 @@ class HttpEngineTransport implements IEngineTransport {
       final now = DateTime.now();
       if (_circuitOpenedAt != null &&
           now.difference(_circuitOpenedAt!) > _circuitOpenDuration) {
-        print('🔄 Circuit breaker: transitioning to half-open');
+        graphEngineClientLogger.info('Circuit breaker: transitioning to half-open');
         _circuitState = CircuitBreakerState.halfOpen;
         return true;
       }
@@ -362,7 +363,7 @@ class HttpEngineTransport implements IEngineTransport {
 
   void _onSuccess() {
     if (_circuitState == CircuitBreakerState.halfOpen) {
-      print('✅ Circuit breaker: closing after successful request');
+      graphEngineClientLogger.info('Circuit breaker: closing after successful request');
       _circuitState = CircuitBreakerState.closed;
     }
     _consecutiveFailures = 0;
@@ -373,7 +374,7 @@ class HttpEngineTransport implements IEngineTransport {
 
     if (_consecutiveFailures >= _failureThreshold) {
       if (_circuitState != CircuitBreakerState.open) {
-        print('🔴 Circuit breaker: opening after $_consecutiveFailures failures');
+        graphEngineClientLogger.warning('Circuit breaker: opening after $_consecutiveFailures failures');
         _circuitState = CircuitBreakerState.open;
         _circuitOpenedAt = DateTime.now();
       }
